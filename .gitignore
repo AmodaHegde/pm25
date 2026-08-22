@@ -1,6 +1,28 @@
-.venv
+# Python environment & cache
+.venv/
+__pycache__/
+*.pyc
 
-data/
-
+# MLflow tracking
 mlruns/
 mlflow.db
+.trash/
+
+# Data & model artifacts (managed by DVC)
+/data/*
+!/data/*.dvc
+!/data/.gitignore
+
+# Saved model weights
+*.pt
+*.pth
+*.pkl
+*.h5
+*.joblib
+models/
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

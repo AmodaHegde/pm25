@@ -1,0 +1,17 @@
+# Git metadata
+.git/
+
+# Python virtual environment and caches
+.venv/
+__pycache__/
+*.pyc
+
+# MLflow tracking directory
+mlruns/
+mlflow.db
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

@@ -1,0 +1,11 @@
+stages:
+  train:
+    cmd: python src/lstm/lstm.py
+    deps:
+      - data/delhi_pm25_lstm_dataset.csv
+      - src/lstm/lstm.py
+    params:
+      - data
+      - model
+      - train
+      - mlflow
