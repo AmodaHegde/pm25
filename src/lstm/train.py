@@ -1,13 +1,13 @@
+import os
 import yaml
+import joblib
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-import numpy as np
-import pandas as pd
 from sklearn.preprocessing import MinMaxScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error
 import mlflow
-import mlflow.pytorch
 
 with open("params.yaml", "r") as f:
     config = yaml.safe_load(f)
@@ -59,41 +59,29 @@ def flatten_dict(d, parent_key="", sep="."):
             items.append((new_key, v))
     return dict(items)
 
+os.makedirs(os.path.dirname(config["model"]["save_path"]), exist_ok=True)
+
 df = pd.read_csv(config["data"]["dataset_path"])
-
 feature_cols = [
-    "pm2_5",
-    "temperature_2m",
-    "relative_humidity_2m",
-    "wind_u",
-    "wind_v",
-    "boundary_layer_height",
-    "precipitation",
-    "nitrogen_dioxide",
-    "hour_sin",
-    "hour_cos"
+    "pm2_5", "temperature_2m", "relative_humidity_2m", "wind_u", "wind_v",
+    "boundary_layer_height", "precipitation", "nitrogen_dioxide", "hour_sin", "hour_cos"
 ]
-
 data = df[feature_cols].values
 target_col_idx = feature_cols.index(config["data"]["target_column"])
 
 train_size = int(len(data) * config["data"]["train_split"])
 train_raw = data[:train_size]
-test_raw = data[train_size:]
 
 scaler = MinMaxScaler()
 train_scaled = scaler.fit_transform(train_raw)
-test_scaled = scaler.transform(test_raw)
+
+joblib.dump(scaler, config["model"]["scaler_path"])
 
 LOOKBACK = config["data"]["lookback_window"]
 X_train, y_train = create_sliding_windows(train_scaled, target_col_idx, LOOKBACK)
-X_test, y_test = create_sliding_windows(test_scaled, target_col_idx, LOOKBACK)
 
 train_dataset = TimeSeriesDataset(X_train, y_train)
-test_dataset = TimeSeriesDataset(X_test, y_test)
-
 train_loader = DataLoader(train_dataset, batch_size=config["train"]["batch_size"], shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=config["train"]["batch_size"], shuffle=False)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 model = PM25LSTM(
@@ -132,34 +120,5 @@ with mlflow.start_run():
         if (epoch + 1) % 10 == 0:
             print(f"Epoch [{epoch+1}/{config['train']['epochs']}] - Loss: {avg_loss:.6f}")
 
-    model.eval()
-    test_preds = []
-    with torch.no_grad():
-        for batch_x, _ in test_loader:
-            batch_x = batch_x.to(device)
-            preds = model(batch_x)
-            test_preds.extend(preds.cpu().numpy())
-
-    test_preds = np.array(test_preds)
-
-    y_test_unscaled = y_test * (scaler.data_max_[target_col_idx] - scaler.data_min_[target_col_idx]) + scaler.data_min_[target_col_idx]
-    preds_unscaled = test_preds.squeeze() * (scaler.data_max_[target_col_idx] - scaler.data_min_[target_col_idx]) + scaler.data_min_[target_col_idx]
-
-    rmse = np.sqrt(mean_squared_error(y_test_unscaled, preds_unscaled))
-    mae = mean_absolute_error(y_test_unscaled, preds_unscaled)
-
-    mlflow.log_metrics({
-        "test_rmse": rmse,
-        "test_mae": mae
-    })
-
-    sample_input = torch.tensor(X_test[:1], dtype=torch.float32).to(device)
-    mlflow.pytorch.log_model(
-        pytorch_model=model,
-        name="model",
-        input_example=sample_input.cpu().numpy()
-    )
-
-    print(f"Test Evaluation:")
-    print(f"  RMSE: {rmse:.2f} µg/m³")
-    print(f"  MAE:  {mae:.2f} µg/m³")
+    torch.save(model.state_dict(), config["model"]["save_path"])
+    print(f"Model saved to {config['model']['save_path']}")

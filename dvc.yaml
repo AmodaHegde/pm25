@@ -1,11 +1,42 @@
 stages:
   train:
-    cmd: python src/lstm/lstm.py
+    cmd: python src/lstm/train.py
     deps:
       - data/delhi_pm25_lstm_dataset.csv
-      - src/lstm/lstm.py
+      - src/lstm/train.py
     params:
-      - data
+      - data.train_split
+      - data.lookback_window
+      - data.target_column
       - model
       - train
+      - mlflow
+    outs:
+      - models/lstm_model.pth
+      - models/scaler.pkl
+
+  validate:
+    cmd: python src/lstm/validate.py
+    deps:
+      - data/delhi_pm25_lstm_dataset.csv
+      - src/lstm/validate.py
+      - models/lstm_model.pth
+      - models/scaler.pkl
+    params:
+      - data.val_split
+      - data.lookback_window
+      - data.target_column
+      - mlflow
+
+  test:
+    cmd: python src/lstm/test.py
+    deps:
+      - data/delhi_pm25_lstm_dataset.csv
+      - src/lstm/test.py
+      - models/lstm_model.pth
+      - models/scaler.pkl
+    params:
+      - data.test_split
+      - data.lookback_window
+      - data.target_column
       - mlflow
