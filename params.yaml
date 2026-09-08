@@ -1,22 +1,19 @@
 data:
-  dataset_path: "data/delhi_pm25_lstm_dataset.csv"
-  train_split: 0.70
+  dataset_path: data/delhi_pm25_lstm_dataset.csv
+  train_split: 0.7
   val_split: 0.15
   test_split: 0.15
   lookback_window: 24
-  target_column: "pm2_5"
-
+  target_column: pm2_5
 model:
-  hidden_dim: 64
-  num_layers: 2
+  hidden_dim: 32
+  num_layers: 1
   dropout: 0.2
-  save_path: "models/lstm_model.pth"
-  scaler_path: "models/scaler.pkl"
-
+  save_path: models/lstm_model.pth
+  scaler_path: models/scaler.pkl
 train:
   batch_size: 32
-  learning_rate: 0.001
+  learning_rate: 0.1133004277215225
   epochs: 50
-
 mlflow:
-  experiment_name: "Delhi_PM25_Baseline_LSTM"
+  experiment_name: Delhi_PM25_Baseline_LSTM
