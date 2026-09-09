@@ -13,10 +13,6 @@ import mlflow.pytorch
 with open("params.yaml", "r") as f:
     config = yaml.safe_load(f)
 
-# ============================================================
-# Dataset (identical to lstm.py)
-# ============================================================
-
 class TimeSeriesDataset(Dataset):
     def __init__(self, sequences, targets):
         self.sequences = torch.tensor(sequences, dtype=torch.float32)
@@ -28,11 +24,6 @@ class TimeSeriesDataset(Dataset):
     def __getitem__(self, idx):
         return self.sequences[idx], self.targets[idx]
 
-# ============================================================
-# Positional encoding (Transformers have no built-in notion of
-# sequence order the way an LSTM does, so this has to be added
-# explicitly before the encoder layers)
-# ============================================================
 
 class PositionalEncoding(nn.Module):
     def __init__(self, d_model, max_len=500):
@@ -49,9 +40,6 @@ class PositionalEncoding(nn.Module):
     def forward(self, x):
         return x + self.pe[:, : x.size(1), :]
 
-# ============================================================
-# Model
-# ============================================================
 
 class PM25Transformer(nn.Module):
     def __init__(self, input_dim, d_model=64, nhead=4, num_layers=2, dropout=0.2):
@@ -74,9 +62,6 @@ class PM25Transformer(nn.Module):
         out = self.fc(out[:, -1, :])
         return out
 
-# ============================================================
-# Helpers (identical to lstm.py)
-# ============================================================
 
 def create_sliding_windows(data, target_idx, window_size=24):
     sequences, targets = [], []
@@ -96,10 +81,6 @@ def flatten_dict(d, parent_key="", sep="."):
         else:
             items.append((new_key, v))
     return dict(items)
-
-# ============================================================
-# Data pipeline (identical to lstm.py)
-# ============================================================
 
 df = pd.read_csv(config["data"]["dataset_path"])
 
@@ -139,10 +120,6 @@ test_loader = DataLoader(test_dataset, batch_size=config["train"]["batch_size"],
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-# NOTE: params.yaml wasn't shared, so nhead isn't an existing key in your
-# config's "model" section. Falls back to 4 if not present - add
-# model.nhead to params.yaml to control it explicitly. hidden_dim must be
-# divisible by nhead (default hidden_dim=64 / nhead=4 works out of the box).
 model = PM25Transformer(
     input_dim=len(feature_cols),
     d_model=config["model"]["hidden_dim"],
