@@ -6,14 +6,14 @@ data:
   lookback_window: 24
   target_column: pm2_5
 model:
-  hidden_dim: 32
+  hidden_dim: 128
   num_layers: 1
   dropout: 0.2
   save_path: models/lstm_model.pth
   scaler_path: models/scaler.pkl
 train:
-  batch_size: 32
-  learning_rate: 0.1133004277215225
+  batch_size: 16
+  learning_rate: 0.10000888614374694
   epochs: 50
 mlflow:
   experiment_name: Delhi_PM25_Baseline_LSTM
