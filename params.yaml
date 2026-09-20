@@ -17,3 +17,17 @@ train:
   epochs: 50
 mlflow:
   experiment_name: Delhi_PM25_Baseline_LSTM
+
+transformer:
+  model:
+    d_model: 64
+    nhead: 4
+    num_layers: 2
+    dropout: 0.2
+    save_path: models/transformer_model.pth
+  train:
+    batch_size: 32
+    learning_rate: 0.001
+    epochs: 50
+  mlflow:
+    experiment_name: Delhi_PM25_Transformer

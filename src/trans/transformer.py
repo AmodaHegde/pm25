@@ -115,30 +115,30 @@ X_test, y_test = create_sliding_windows(test_scaled, target_col_idx, LOOKBACK)
 train_dataset = TimeSeriesDataset(X_train, y_train)
 test_dataset = TimeSeriesDataset(X_test, y_test)
 
-train_loader = DataLoader(train_dataset, batch_size=config["train"]["batch_size"], shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=config["train"]["batch_size"], shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=config["transformer"]["train"]["batch_size"], shuffle=True)
+test_loader = DataLoader(test_dataset, batch_size=config["transformer"]["train"]["batch_size"], shuffle=False)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 model = PM25Transformer(
     input_dim=len(feature_cols),
-    d_model=config["model"]["hidden_dim"],
-    nhead=config["model"].get("nhead", 4),
-    num_layers=config["model"]["num_layers"],
-    dropout=config["model"]["dropout"],
+    d_model=config["transformer"]["model"]["d_model"],
+    nhead=config["transformer"]["model"]["nhead"],
+    num_layers=config["transformer"]["model"]["num_layers"],
+    dropout=config["transformer"]["model"]["dropout"],
 ).to(device)
 
 criterion = nn.MSELoss()
-optimizer = torch.optim.Adam(model.parameters(), lr=config["train"]["learning_rate"])
+optimizer = torch.optim.Adam(model.parameters(), lr=config["transformer"]["train"]["learning_rate"])
 
-mlflow.set_experiment(config["mlflow"]["experiment_name"])
+mlflow.set_experiment(config["transformer"]["mlflow"]["experiment_name"])
 
 with mlflow.start_run(run_name="transformer"):
     mlflow.log_params(flatten_dict(config))
     mlflow.log_param("model_type", "transformer")
     mlflow.log_artifact("params.yaml")
 
-    for epoch in range(config["train"]["epochs"]):
+    for epoch in range(config["transformer"]["train"]["epochs"]):
         model.train()
         total_loss = 0.0
         for batch_x, batch_y in train_loader:
@@ -156,7 +156,7 @@ with mlflow.start_run(run_name="transformer"):
         mlflow.log_metric("train_loss", avg_loss, step=epoch)
 
         if (epoch + 1) % 10 == 0:
-            print(f"Epoch [{epoch+1}/{config['train']['epochs']}] - Loss: {avg_loss:.6f}")
+            print(f"Epoch [{epoch+1}/{config['transformer']['train']['epochs']}] - Loss: {avg_loss:.6f}")
 
     model.eval()
     test_preds = []
