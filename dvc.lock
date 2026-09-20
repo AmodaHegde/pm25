@@ -1,0 +1,91 @@
+schema: '2.0'
+stages:
+  train:
+    cmd: python src/lstm/train.py
+    deps:
+    - path: data/delhi_pm25_lstm_dataset.csv
+      hash: md5
+      md5: e28d3e2db8755a8b10450a6a5493bd5a
+      size: 357669
+    - path: src/lstm/train.py
+      hash: md5
+      md5: e546317f2b3265094c2396f71d278789
+      size: 4238
+    params:
+      params.yaml:
+        data.lookback_window: 24
+        data.target_column: pm2_5
+        data.train_split: 0.7
+        mlflow:
+          experiment_name: Delhi_PM25_Baseline_LSTM
+        model:
+          hidden_dim: 64
+          num_layers: 2
+          dropout: 0.2
+          save_path: models/lstm_model.pth
+          scaler_path: models/scaler.pkl
+        train:
+          batch_size: 32
+          learning_rate: 0.001
+          epochs: 50
+    outs:
+    - path: models/lstm_model.pth
+      hash: md5
+      md5: 32f597ffda5cd57c456c10afaddc3a10
+      size: 215285
+    - path: models/scaler.pkl
+      hash: md5
+      md5: bf69e099eb0f5bd50a8edbc47b5a217f
+      size: 1063
+  validate:
+    cmd: python src/lstm/validate.py
+    deps:
+    - path: data/delhi_pm25_lstm_dataset.csv
+      hash: md5
+      md5: e28d3e2db8755a8b10450a6a5493bd5a
+      size: 357669
+    - path: models/lstm_model.pth
+      hash: md5
+      md5: 32f597ffda5cd57c456c10afaddc3a10
+      size: 215285
+    - path: models/scaler.pkl
+      hash: md5
+      md5: bf69e099eb0f5bd50a8edbc47b5a217f
+      size: 1063
+    - path: src/lstm/validate.py
+      hash: md5
+      md5: 74d5094c1535d22153dff5a0453af487
+      size: 3997
+    params:
+      params.yaml:
+        data.lookback_window: 24
+        data.target_column: pm2_5
+        data.val_split: 0.15
+        mlflow:
+          experiment_name: Delhi_PM25_Baseline_LSTM
+  test:
+    cmd: python src/lstm/test.py
+    deps:
+    - path: data/delhi_pm25_lstm_dataset.csv
+      hash: md5
+      md5: e28d3e2db8755a8b10450a6a5493bd5a
+      size: 357669
+    - path: models/lstm_model.pth
+      hash: md5
+      md5: 32f597ffda5cd57c456c10afaddc3a10
+      size: 215285
+    - path: models/scaler.pkl
+      hash: md5
+      md5: bf69e099eb0f5bd50a8edbc47b5a217f
+      size: 1063
+    - path: src/lstm/test.py
+      hash: md5
+      md5: ca2553562dd72bf8f0b4635788e552a7
+      size: 4000
+    params:
+      params.yaml:
+        data.lookback_window: 24
+        data.target_column: pm2_5
+        data.test_split: 0.15
+        mlflow:
+          experiment_name: Delhi_PM25_Baseline_LSTM
