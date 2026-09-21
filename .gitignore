@@ -8,8 +8,6 @@ mlruns/
 mlflow.db
 .trash/
 
-# Data & model artifacts (managed by DVC)
-/data/*
 !/data/*.dvc
 !/data/.gitignore
 
