@@ -1,5 +1,5 @@
 data:
-  dataset_path: data/delhi_pm25_lstm_dataset.csv
+  dataset_path: data/silver/pm25.csv
   train_split: 0.7
   val_split: 0.15
   test_split: 0.15
