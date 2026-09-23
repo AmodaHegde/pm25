@@ -17,7 +17,6 @@ mlflow.db
 *.pkl
 *.h5
 *.joblib
-models/
 
 # OS & Editor files
 .DS_Store
