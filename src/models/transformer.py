@@ -82,7 +82,7 @@ def flatten_dict(d, parent_key="", sep="."):
             items.append((new_key, v))
     return dict(items)
 
-df = pd.read_csv(config["data"]["dataset_path"])
+df = pd.read_csv(config["transformer"]["data"]["dataset_path"])
 
 feature_cols = [
     "pm2_5",
@@ -98,9 +98,9 @@ feature_cols = [
 ]
 
 data = df[feature_cols].values
-target_col_idx = feature_cols.index(config["data"]["target_column"])
+target_col_idx = feature_cols.index(config["transformer"]["data"]["target_column"])
 
-train_size = int(len(data) * config["data"]["train_split"])
+train_size = int(len(data) * config["transformer"]["data"]["train_split"])
 train_raw = data[:train_size]
 test_raw = data[train_size:]
 
@@ -108,7 +108,7 @@ scaler = MinMaxScaler()
 train_scaled = scaler.fit_transform(train_raw)
 test_scaled = scaler.transform(test_raw)
 
-LOOKBACK = config["data"]["lookback_window"]
+LOOKBACK = config["transformer"]["data"]["lookback_window"]
 X_train, y_train = create_sliding_windows(train_scaled, target_col_idx, LOOKBACK)
 X_test, y_test = create_sliding_windows(test_scaled, target_col_idx, LOOKBACK)
 
