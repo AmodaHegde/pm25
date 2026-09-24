@@ -36,4 +36,4 @@ transformer:
     learning_rate: 0.001
     epochs: 50
   mlflow:
-    experiment_name: TRANS_Baseline
+    experiment_name: TRANSFORMER_Baseline
