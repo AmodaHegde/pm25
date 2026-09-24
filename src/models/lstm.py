@@ -14,7 +14,9 @@ import mlflow.pytorch
 
 # 1. Configuration & Utilities
 with open("params.yaml", "r") as f:
-    config = yaml.safe_load(f)
+    raw_config = yaml.safe_load(f)
+
+config = raw_config.get("lstm", raw_config)
 
 def flatten_dict(d, parent_key="", sep="."):
     items = []

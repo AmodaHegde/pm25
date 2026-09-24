@@ -2,7 +2,7 @@ import numpy as np
 import pandas as pd
 
 # 1. Load Bronze Dataset
-df = pd.read_csv("D:/miniproject/data/bronze/pm25.csv")
+df = pd.read_csv("D:/miniproject/data/bronze/pm25-1.csv")
 
 
 # 2. Feature Engineering Functions
@@ -78,8 +78,6 @@ final_columns = [
     "nitrogen_dioxide",
     "sulphur_dioxide",
     "ozone",
-    "us_aqi",
-    "european_aqi",
     "dust",
     "temperature_2m",
     "relative_humidity_2m",
@@ -87,7 +85,6 @@ final_columns = [
     "precipitation",
     "rain",
     "surface_pressure",
-    "weather_code",
     "boundary_layer_height",
     "wind_u",
     "wind_v",
@@ -124,6 +121,6 @@ df_final[numeric_cols] = (
 )
 
 # 6. Save Processed Silver Dataset
-df_final.to_csv("D:/miniproject/data/silver/pm25.csv", index=False)
+df_final.to_csv("D:/miniproject/data/silver/pm25-1.csv", index=False)
 
 print(f"Silver dataset successfully created with shape: {df_final.shape}")

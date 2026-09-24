@@ -4,8 +4,8 @@ import pandas as pd
 
 LATITUDE = 28.6139
 LONGITUDE = 77.2090
-START_DATE = "2025-10-01"
-END_DATE = "2026-02-28"
+START_DATE = "2025-09-01"
+END_DATE = "2026-09-01"
 
 aq_url = "https://air-quality-api.open-meteo.com/v1/air-quality"
 aq_params = {
@@ -84,6 +84,6 @@ final_columns = [
 ]
 
 df_final = df[final_columns].copy()
-df_final.to_csv("D:/miniproject/data/bronze/pm25.csv", index=False)
+df_final.to_csv("D:/miniproject/data/bronze/pm25-1.csv", index=False)
 
 print(f"Bronze dataset successfully created with shape: {df_final.shape}")

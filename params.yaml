@@ -1,22 +1,23 @@
-data:
-  dataset_path: data/silver/pm25.csv
-  train_split: 0.7
-  val_split: 0.15
-  test_split: 0.15
-  lookback_window: 24
-  target_column: pm2_5
-model:
-  hidden_dim: 128
-  num_layers: 1
-  dropout: 0.2
-  save_path: models/lstm_model.pth
-  scaler_path: models/scaler.pkl
-train:
-  batch_size: 16
-  learning_rate: 0.10000888614374694
-  epochs: 50
-mlflow:
-  experiment_name: Delhi_PM25_Baseline_LSTM
+lstm:  
+  data:
+    dataset_path: data/silver/pm25-1.csv
+    train_split: 0.7
+    val_split: 0.15
+    test_split: 0.15
+    lookback_window: 24
+    target_column: pm2_5
+  model:
+    hidden_dim: 128
+    num_layers: 1
+    dropout: 0.2
+    save_path: models/lstm_model.pth
+    scaler_path: models/scaler.pkl
+  train:
+    batch_size: 16
+    learning_rate: 0.10000888614374694
+    epochs: 50
+  mlflow:
+    experiment_name: LSTM_Baseline
 
 transformer:
   model:
@@ -30,4 +31,4 @@ transformer:
     learning_rate: 0.001
     epochs: 50
   mlflow:
-    experiment_name: Delhi_PM25_Transformer
+    experiment_name: TRANS_Baseline
