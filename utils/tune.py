@@ -1,3 +1,7 @@
+import argparse
+import copy
+import random
+
 import yaml
 import numpy as np
 import pandas as pd
@@ -7,11 +11,19 @@ from torch.utils.data import Dataset, DataLoader
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.metrics import mean_squared_error
-import mlflow
 import optuna
 
-with open("params.yaml", "r") as f:
-    config = yaml.safe_load(f)
+FEATURE_COLS = [
+    "pm2_5", "pm10", "carbon_monoxide", "nitrogen_dioxide",
+    "sulphur_dioxide", "ozone", "dust",
+    "temperature_2m", "relative_humidity_2m", "apparent_temperature",
+    "precipitation", "rain", "surface_pressure",
+    "boundary_layer_height", "wind_u", "wind_v", "hour_sin", "hour_cos",
+    "doy_sin", "doy_cos", "dow_sin", "dow_cos", "pm_ratio",
+    "ventilation_index", "temp_humidity_interaction", "pm2_5_lag_1h",
+    "pm2_5_lag_2h", "pm2_5_lag_3h", "pm2_5_lag_6h", "pm2_5_lag_24h",
+    "pm2_5_roll_mean_6h", "pm2_5_roll_std_6h", "pm2_5_roll_mean_24h",
+]
 
 class TimeSeriesDataset(Dataset):
     def __init__(self, sequences, targets):
@@ -21,149 +33,191 @@ class TimeSeriesDataset(Dataset):
     def __len__(self):
         return len(self.sequences)
 
-    def __getitem__(self, idx):
-        return self.sequences[idx], self.targets[idx]
+    def __getitem__(self, index):
+        return self.sequences[index], self.targets[index]
 
 class PM25LSTM(nn.Module):
-    def __init__(self, input_dim, hidden_dim=64, num_layers=2, dropout=0.2):
-        super(PM25LSTM, self).__init__()
+    def __init__(self, input_dim, hidden_dim, num_layers, dropout):
+        super().__init__()
         self.lstm = nn.LSTM(
             input_size=input_dim,
             hidden_size=hidden_dim,
             num_layers=num_layers,
             batch_first=True,
-            dropout=dropout if num_layers > 1 else 0.0
+            dropout=dropout if num_layers > 1 else 0.0,
         )
         self.fc = nn.Linear(hidden_dim, 1)
 
-    def forward(self, x):
-        out, _ = self.lstm(x)
-        out = self.fc(out[:, -1, :])
-        return out
+    def forward(self, inputs):
+        outputs, _ = self.lstm(inputs)
+        return self.fc(outputs[:, -1, :])
 
-def create_sliding_windows(data, target_idx, window_size=24):
-    sequences, targets = [], []
-    for i in range(len(data) - window_size):
-        seq = data[i : i + window_size, :]
-        label = data[i + window_size, target_idx]
-        sequences.append(seq)
-        targets.append(label)
-    return np.array(sequences), np.array(targets)
+def create_sliding_windows(data, target_idx, window_size):
+    sequences = []
+    targets = []
+    for index in range(len(data) - window_size):
+        sequences.append(data[index : index + window_size])
+        targets.append(data[index + window_size, target_idx])
+    return np.asarray(sequences), np.asarray(targets)
 
-df = pd.read_csv(config["data"]["dataset_path"])
-feature_cols = [
-    "pm2_5", "temperature_2m", "relative_humidity_2m", "wind_u", "wind_v",
-    "boundary_layer_height", "precipitation", "nitrogen_dioxide", "hour_sin", "hour_cos"
-]
-raw_features = df[feature_cols].values
-target_col_idx = feature_cols.index(config["data"]["target_column"])
-lookback = config["data"]["lookback_window"]
+def load_config():
+    with open("params.yaml", "r") as config_file:
+        raw_config = yaml.safe_load(config_file)
+    return raw_config, raw_config.get("lstm", raw_config)
 
-dev_size = int(len(raw_features) * (config["data"]["train_split"] + config["data"]["val_split"]))
-dev_raw = raw_features[:dev_size]
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+def seed_everything(seed):
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
 
-def objective(trial):
-    hidden_dim = trial.suggest_categorical("hidden_dim", [32, 64, 128])
+def objective(trial, dev_raw, target_idx, lookback, config, device):
+    hidden_dim = trial.suggest_categorical("hidden_dim", [32, 64, 128, 256])
     num_layers = trial.suggest_int("num_layers", 1, 3)
-    dropout = trial.suggest_float("dropout", 0.0, 0.4, step=0.1) if num_layers > 1 else 0.0
-    learning_rate = trial.suggest_float("learning_rate", 0.1, 0.5, log=True)
+    dropout = trial.suggest_float("dropout", 0.0, 0.4, step=0.1)
+    learning_rate = trial.suggest_float("learning_rate", 1e-4, 1e-2, log=True)
     batch_size = trial.suggest_categorical("batch_size", [16, 32, 64])
-    epochs = 15
-
-    tscv = TimeSeriesSplit(n_splits=3)
+    epochs = config["tuning_epochs"]
     fold_rmses = []
 
-    with mlflow.start_run(run_name=f"trial_{trial.number}", nested=True):
-        mlflow.log_params(trial.params)
+    for fold, (train_idx, val_idx) in enumerate(TimeSeriesSplit(n_splits=3).split(dev_raw)):
+        train_raw = dev_raw[train_idx]
+        val_raw = dev_raw[max(0, val_idx[0] - lookback) : val_idx[-1] + 1]
+        scaler = MinMaxScaler()
+        train_scaled = scaler.fit_transform(train_raw)
+        val_scaled = scaler.transform(val_raw)
+        X_train, y_train = create_sliding_windows(train_scaled, target_idx, lookback)
+        X_val, y_val = create_sliding_windows(val_scaled, target_idx, lookback)
 
-        for fold, (train_idx, val_idx) in enumerate(tscv.split(dev_raw)):
-            fold_scaler = MinMaxScaler()
-            train_fold_raw = dev_raw[train_idx]
-            train_fold_scaled = fold_scaler.fit_transform(train_fold_raw)
+        train_loader = DataLoader(
+            TimeSeriesDataset(X_train, y_train), batch_size=batch_size, shuffle=True
+        )
+        val_loader = DataLoader(
+            TimeSeriesDataset(X_val, y_val), batch_size=batch_size, shuffle=False
+        )
+        model = PM25LSTM(
+            input_dim=len(FEATURE_COLS),
+            hidden_dim=hidden_dim,
+            num_layers=num_layers,
+            dropout=dropout,
+        ).to(device)
+        criterion = nn.MSELoss()
+        optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
 
-            val_fold_raw = dev_raw[max(0, val_idx[0] - lookback) : val_idx[-1] + 1]
-            val_fold_scaled = fold_scaler.transform(val_fold_raw)
+        for epoch in range(epochs):
+            model.train()
+            for batch_x, batch_y in train_loader:
+                batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                optimizer.zero_grad()
+                loss = criterion(model(batch_x), batch_y)
+                loss.backward()
+                optimizer.step()
 
-            X_tr, y_tr = create_sliding_windows(train_fold_scaled, target_col_idx, lookback)
-            X_vl, y_vl = create_sliding_windows(val_fold_scaled, target_col_idx, lookback)
-
-            train_loader = DataLoader(TimeSeriesDataset(X_tr, y_tr), batch_size=batch_size, shuffle=True)
-            val_loader = DataLoader(TimeSeriesDataset(X_vl, y_vl), batch_size=batch_size, shuffle=False)
-
-            model = PM25LSTM(
-                input_dim=len(feature_cols),
-                hidden_dim=hidden_dim,
-                num_layers=num_layers,
-                dropout=dropout
-            ).to(device)
-
-            criterion = nn.MSELoss()
-            optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
-
-            for epoch in range(epochs):
-                model.train()
-                for bx, by in train_loader:
-                    bx, by = bx.to(device), by.to(device)
-                    optimizer.zero_grad()
-                    loss = criterion(model(bx), by)
-                    loss.backward()
-                    optimizer.step()
-
-                model.eval()
-                val_epoch_loss = 0.0
-                with torch.no_grad():
-                    for bx, by in val_loader:
-                        bx, by = bx.to(device), by.to(device)
-                        preds_batch = model(bx)
-                        val_epoch_loss += criterion(preds_batch, by).item()
-                val_epoch_loss /= len(val_loader)
-
-                global_step = fold * epochs + epoch
-                trial.report(val_epoch_loss, step=global_step)
-                if trial.should_prune():
-                    mlflow.set_tag("pruned", "True")
-                    raise optuna.TrialPruned()
-
-            preds = []
+            model.eval()
+            validation_loss = 0.0
             with torch.no_grad():
-                for bx, _ in val_loader:
-                    bx = bx.to(device)
-                    preds.extend(model(bx).cpu().numpy())
+                for batch_x, batch_y in val_loader:
+                    batch_x, batch_y = batch_x.to(device), batch_y.to(device)
+                    validation_loss += criterion(model(batch_x), batch_y).item()
+            validation_loss /= len(val_loader)
+            trial.report(validation_loss, step=fold * epochs + epoch)
+            if trial.should_prune():
+                raise optuna.TrialPruned()
 
-            preds = np.array(preds).squeeze()
-            scale_factor = fold_scaler.data_max_[target_col_idx] - fold_scaler.data_min_[target_col_idx]
-            y_vl_unscaled = y_vl * scale_factor + fold_scaler.data_min_[target_col_idx]
-            preds_unscaled = preds * scale_factor + fold_scaler.data_min_[target_col_idx]
+        predictions = []
+        model.eval()
+        with torch.no_grad():
+            for batch_x, _ in val_loader:
+                predictions.extend(model(batch_x.to(device)).cpu().numpy().ravel())
+        scale_range = scaler.data_max_[target_idx] - scaler.data_min_[target_idx]
+        predictions = np.asarray(predictions) * scale_range + scaler.data_min_[target_idx]
+        targets = y_val * scale_range + scaler.data_min_[target_idx]
+        fold_rmse = np.sqrt(mean_squared_error(targets, predictions))
+        fold_rmses.append(fold_rmse)
+        print(
+            f"Trial {trial.number}, fold {fold + 1}/3 complete: "
+            f"RMSE={fold_rmse:.4f}",
+            flush=True,
+        )
 
-            fold_rmse = np.sqrt(mean_squared_error(y_vl_unscaled, preds_unscaled))
-            fold_rmses.append(fold_rmse)
+    return float(np.mean(fold_rmses))
 
-        mean_rmse = float(np.mean(fold_rmses))
-        mlflow.log_metric("mean_cv_rmse", mean_rmse)
+def update_lstm_config(raw_config, best_params):
+    updated_config = copy.deepcopy(raw_config)
+    lstm_config = updated_config["lstm"] if "lstm" in updated_config else updated_config
+    lstm_config["model"].update(
+        {
+            "hidden_dim": best_params["hidden_dim"],
+            "num_layers": best_params["num_layers"],
+            "dropout": best_params["dropout"],
+        }
+    )
+    lstm_config["train"].update(
+        {
+            "learning_rate": best_params["learning_rate"],
+            "batch_size": best_params["batch_size"],
+        }
+    )
+    return updated_config
 
-        return mean_rmse
+def main():
+    parser = argparse.ArgumentParser(description="Tune the LSTM with Optuna.")
+    parser.add_argument("--n-trials", type=int, default=30)
+    parser.add_argument("--study-name", default="pm25_lstm_tuning")
+    parser.add_argument("--storage", default="sqlite:///optuna_study.db")
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=10,
+        help="Training epochs per fold for each trial (default: 10).",
+    )
+    parser.add_argument("--no-update-config", action="store_true")
+    args = parser.parse_args()
 
-mlflow.set_experiment(config["mlflow"]["experiment_name"])
+    raw_config, config = load_config()
+    config["tuning_epochs"] = args.epochs
+    seed_everything(config.get("seed", 42))
+    df = pd.read_csv(config["data"]["dataset_path"])
+    missing_features = sorted(set(FEATURE_COLS) - set(df.columns))
+    if missing_features:
+        raise ValueError(f"Dataset is missing LSTM features: {missing_features}")
 
-pruner = optuna.pruners.MedianPruner(
-    n_startup_trials=5,
-    n_warmup_steps=5,
-    interval_steps=1
-)
+    data = df[FEATURE_COLS].to_numpy(dtype=np.float32)
+    target_idx = FEATURE_COLS.index(config["data"]["target_column"])
+    dev_size = int(
+        len(data) * (config["data"]["train_split"] + config["data"]["val_split"])
+    )
+    dev_raw = data[:dev_size]
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-with mlflow.start_run(run_name="optuna_study_parent"):
-    study = optuna.create_study(direction="minimize", pruner=pruner)
-    study.optimize(objective, n_trials=15)
+    study = optuna.create_study(
+        study_name=args.study_name,
+        storage=args.storage,
+        load_if_exists=True,
+        direction="minimize",
+        pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=5),
+    )
+    study.optimize(
+        lambda trial: objective(
+            trial,
+            dev_raw,
+            target_idx,
+            config["data"]["lookback_window"],
+            config,
+            device,
+        ),
+        n_trials=args.n_trials,
+    )
 
-    mlflow.log_params({f"best_{k}": v for k, v in study.best_params.items()})
-    mlflow.log_metric("best_cv_rmse", study.best_value)
+    print(f"Best validation RMSE: {study.best_value:.4f}")
+    print(f"Best parameters: {study.best_params}")
 
-    config["model"]["hidden_dim"] = study.best_params.get("hidden_dim", config["model"]["hidden_dim"])
-    config["model"]["num_layers"] = study.best_params.get("num_layers", config["model"]["num_layers"])
-    config["model"]["dropout"] = study.best_params.get("dropout", config["model"]["dropout"])
-    config["train"]["learning_rate"] = study.best_params.get("learning_rate", config["train"]["learning_rate"])
-    config["train"]["batch_size"] = study.best_params.get("batch_size", config["train"]["batch_size"])
+    if not args.no_update_config:
+        updated_config = update_lstm_config(raw_config, study.best_params)
+        with open("params.yaml", "w") as config_file:
+            yaml.safe_dump(updated_config, config_file, sort_keys=False)
+        print("Updated the lstm section in params.yaml.")
 
-    with open("params.yaml", "w") as f:
-        yaml.safe_dump(config, f, sort_keys=False)
+if __name__ == "__main__":
+    main()

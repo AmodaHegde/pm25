@@ -76,8 +76,6 @@ feature_cols = [
     "nitrogen_dioxide",
     "sulphur_dioxide",
     "ozone",
-    "us_aqi",
-    "european_aqi",
     "dust",
     "temperature_2m",
     "relative_humidity_2m",
@@ -85,7 +83,6 @@ feature_cols = [
     "precipitation",
     "rain",
     "surface_pressure",
-    "weather_code",
     "boundary_layer_height",
     "wind_u",
     "wind_v",
@@ -167,6 +164,7 @@ with mlflow.start_run(run_name="TimeSeries_CV_Training") as parent_run:
             # Train Fold
             for epoch in range(config["train"]["epochs"]):
                 model.train()
+                epoch_loss = 0.0
                 for bx, by in train_loader:
                     bx, by = bx.to(device), by.to(device)
                     optimizer.zero_grad()
@@ -174,6 +172,15 @@ with mlflow.start_run(run_name="TimeSeries_CV_Training") as parent_run:
                     loss = criterion(out, by)
                     loss.backward()
                     optimizer.step()
+                    epoch_loss += loss.item()
+
+                average_epoch_loss = epoch_loss / len(train_loader)
+                print(
+                    f"Fold {fold + 1}/{tscv.n_splits} - "
+                    f"Epoch {epoch + 1}/{config['train']['epochs']} - "
+                    f"Train Loss: {average_epoch_loss:.6f}",
+                    flush=True,
+                )
 
             # Evaluate Fold
             model.eval()
@@ -233,6 +240,7 @@ with mlflow.start_run(run_name="TimeSeries_CV_Training") as parent_run:
 
     for epoch in range(config["train"]["epochs"]):
         final_model.train()
+        epoch_loss = 0.0
         for bx, by in final_train_loader:
             bx, by = bx.to(device), by.to(device)
             final_optimizer.zero_grad()
@@ -240,6 +248,14 @@ with mlflow.start_run(run_name="TimeSeries_CV_Training") as parent_run:
             loss = final_criterion(out, by)
             loss.backward()
             final_optimizer.step()
+            epoch_loss += loss.item()
+
+        average_epoch_loss = epoch_loss / len(final_train_loader)
+        print(
+            f"Final model - Epoch {epoch + 1}/{config['train']['epochs']} - "
+            f"Train Loss: {average_epoch_loss:.6f}",
+            flush=True,
+        )
 
     torch.save(final_model.state_dict(), config["model"]["save_path"])
 

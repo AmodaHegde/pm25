@@ -1,4 +1,4 @@
-lstm:  
+lstm:
   data:
     dataset_path: data/silver/pm25-1.csv
     train_split: 0.7
@@ -7,18 +7,18 @@ lstm:
     lookback_window: 24
     target_column: pm2_5
   model:
-    hidden_dim: 128
+    hidden_dim: 256
     num_layers: 1
-    dropout: 0.2
+    dropout: 0.30000000000000004
     save_path: models/lstm_model.pth
     scaler_path: models/scaler.pkl
   train:
     batch_size: 16
-    learning_rate: 0.10000888614374694
+    learning_rate: 0.0004107732089297195
     epochs: 50
   mlflow:
     experiment_name: LSTM_Baseline
-
+  tuning_epochs: 10
 transformer:
   data:
     dataset_path: data/silver/pm25-1.csv
