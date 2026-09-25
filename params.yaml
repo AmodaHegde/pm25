@@ -20,10 +20,15 @@ lstm:
     experiment_name: LSTM_Baseline
   tuning_epochs: 10
 transformer:
+  data:
+    dataset_path: data/silver/pm25-1.csv
+    train_split: 0.85
+    lookback_window: 24
+    target_column: pm2_5
   model:
     d_model: 64
     nhead: 4
-    num_layers: 2
+    num_layers: 2 
     dropout: 0.2
     save_path: models/transformer_model.pth
   train:
@@ -31,4 +36,4 @@ transformer:
     learning_rate: 0.001
     epochs: 50
   mlflow:
-    experiment_name: TRANS_Baseline
+    experiment_name: TRANSFORMER_Baseline
