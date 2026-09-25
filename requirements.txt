@@ -1,0 +1,12 @@
+dvc
+joblib
+matplotlib
+mlflow
+numpy
+optuna
+pandas
+PyYAML
+requests
+scikit-learn
+seaborn
+torch
