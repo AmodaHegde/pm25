@@ -1,0 +1,22 @@
+,dtype,null_count,null_pct (%)
+time,datetime64[ns],0,0.0
+pm2_5,float64,0,0.0
+pm10,float64,0,0.0
+carbon_monoxide,float64,0,0.0
+nitrogen_dioxide,float64,0,0.0
+sulphur_dioxide,float64,0,0.0
+ozone,float64,0,0.0
+us_aqi,int64,0,0.0
+european_aqi,int64,0,0.0
+dust,float64,0,0.0
+ammonia,float64,8784,100.0
+temperature_2m,float64,0,0.0
+relative_humidity_2m,int64,0,0.0
+apparent_temperature,float64,0,0.0
+precipitation,float64,0,0.0
+rain,float64,0,0.0
+surface_pressure,float64,0,0.0
+wind_speed_10m,float64,0,0.0
+wind_direction_10m,int64,0,0.0
+weather_code,int64,0,0.0
+boundary_layer_height,float64,0,0.0
