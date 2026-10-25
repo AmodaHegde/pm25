@@ -37,3 +37,9 @@ transformer:
     epochs: 50
   mlflow:
     experiment_name: TRANSFORMER_Baseline
+pinn:
+  data:
+  model:
+  train:
+  mlflow:
+  

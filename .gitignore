@@ -23,3 +23,6 @@ mlflow.db
 Thumbs.db
 .vscode/
 .idea/
+jobs.csv
+jobs.py
+null_percentage_report.csv
