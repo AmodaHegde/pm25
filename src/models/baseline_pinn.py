@@ -9,24 +9,36 @@ The first three model inputs are always x (km), y (km), and time (hours),
 so the physics derivatives are taken with respect to those three inputs only.
 """
 
-import copy
+import os
 import numpy as np
 import pandas as pd
 import torch
 import torch.nn as nn
 import matplotlib.pyplot as plt
+import mlflow
+from mlflow.tracking import MlflowClient
 
 from sklearn.impute import SimpleImputer
 from sklearn.model_selection import TimeSeriesSplit
 from sklearn.preprocessing import OrdinalEncoder, StandardScaler
-from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.metrics import mean_squared_error, mean_absolute_error, r2_score
 
 # ---------------------------------------------------------------------
 # 1. Configuration
 # ---------------------------------------------------------------------
-CSV_FILE = r"D:/miniproject/data/silver/delhi_air_weather.csv"
-OUTPUT_METRICS = r"D:\miniproject\results\pinn_timeseries_cv_metrics.csv"
-OUTPUT_PREDICTIONS = r"D:\miniproject\results\pinn_timeseries_cv_predictions.csv"
+CSV_FILE = os.environ.get(
+    "PINN_CSV_FILE", "data/silver/delhi_air_weather.csv"
+)
+OUTPUT_METRICS = os.environ.get(
+    "PINN_OUTPUT_METRICS", "results/pinn_timeseries_cv_metrics.csv"
+)
+OUTPUT_PREDICTIONS = os.environ.get(
+    "PINN_OUTPUT_PREDICTIONS", "results/pinn_timeseries_cv_predictions.csv"
+)
+MLFLOW_TRACKING_URI = os.environ.get("MLFLOW_TRACKING_URI", "")
+MLFLOW_EXPERIMENT_NAME = os.environ.get(
+    "MLFLOW_EXPERIMENT_NAME", "Baseline_PINN_TimeSeries_CV"
+)
 
 LAT_COL = "lat"
 LON_COL = "lon"
@@ -52,6 +64,34 @@ torch.manual_seed(SEED)
 np.random.seed(SEED)
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 print(f"Using device: {device}")
+
+# In Colab, set MLFLOW_TRACKING_URI to the HTTPS ngrok URL for the server.
+# Keep ngrok and MLflow credentials in Colab secrets/environment variables.
+if MLFLOW_TRACKING_URI:
+    mlflow.set_tracking_uri(MLFLOW_TRACKING_URI)
+mlflow.set_experiment(MLFLOW_EXPERIMENT_NAME)
+mlflow_client = MlflowClient()
+experiment = mlflow_client.get_experiment_by_name(MLFLOW_EXPERIMENT_NAME)
+parent_run = mlflow_client.create_run(
+    experiment.experiment_id,
+    tags={
+        "mlflow.runName": "PINN_TimeSeries_CV",
+        "model_type": "baseline_pinn",
+        "cv_strategy": "expanding_window_time_series",
+    },
+)
+parent_run_id = parent_run.info.run_id
+mlflow_client.log_params(parent_run_id, {
+    "n_splits": N_SPLITS,
+    "epochs": EPOCHS,
+    "learning_rate": LEARNING_RATE,
+    "physics_weight": PHYSICS_WEIGHT,
+    "data_weight": DATA_WEIGHT,
+    "hidden_units": HIDDEN_UNITS,
+    "seed": SEED,
+    "device": str(device),
+    "target_column": PM_COL,
+})
 
 # ---------------------------------------------------------------------
 # 2. Load and clean data
@@ -245,15 +285,22 @@ for fold, (train_time_idx, val_time_idx) in enumerate(
                 f"Physics loss: {physics_loss.item():.6f}"
             )
 
-    # ----- Validate on future timestamps only -----
+    # ----- Evaluate training and future timestamps in original PM2.5 units -----
     model.eval()
     with torch.no_grad():
+        pred_train_scaled = model(X_train).cpu().numpy()
         pred_val_scaled = model(X_val).cpu().numpy()
 
+    pred_train = y_scaler.inverse_transform(pred_train_scaled).ravel()
+    actual_train = train_df[PM_COL].to_numpy()
     pred_val = y_scaler.inverse_transform(pred_val_scaled).ravel()
     actual_val = val_df[PM_COL].to_numpy()
-    rmse = float(np.sqrt(mean_squared_error(actual_val, pred_val)))
-    mae = float(mean_absolute_error(actual_val, pred_val))
+    train_rmse = float(np.sqrt(mean_squared_error(actual_train, pred_train)))
+    train_mae = float(mean_absolute_error(actual_train, pred_train))
+    train_r2 = float(r2_score(actual_train, pred_train))
+    test_rmse = float(np.sqrt(mean_squared_error(actual_val, pred_val)))
+    test_mae = float(mean_absolute_error(actual_val, pred_val))
+    test_r2 = float(r2_score(actual_val, pred_val))
 
     train_station_set = set(train_df[STATION_COL].astype(str).unique())
     val_station_set = set(val_df[STATION_COL].astype(str).unique())
@@ -270,8 +317,12 @@ for fold, (train_time_idx, val_time_idx) in enumerate(
         "train_stations": len(train_station_set),
         "validation_stations": len(val_station_set),
         "unseen_validation_stations": len(unseen_stations),
-        "rmse": rmse,
-        "mae": mae,
+        "train_rmse": train_rmse,
+        "train_mae": train_mae,
+        "train_r2": train_r2,
+        "test_rmse": test_rmse,
+        "test_mae": test_mae,
+        "test_r2": test_r2,
     })
 
     fold_result = val_df[[TIME_COL, STATION_COL, PM_COL]].copy()
@@ -279,8 +330,44 @@ for fold, (train_time_idx, val_time_idx) in enumerate(
     fold_result["predicted_pm25"] = pred_val
     fold_predictions.append(fold_result)
 
-    print(f"Validation RMSE: {rmse:.3f} µg/m³")
-    print(f"Validation MAE:  {mae:.3f} µg/m³")
+    fold_run = mlflow_client.create_run(
+        experiment.experiment_id,
+        tags={
+            "mlflow.runName": f"Fold_{fold}",
+            "mlflow.parentRunId": parent_run_id,
+            "fold": str(fold),
+        },
+    )
+    fold_run_id = fold_run.info.run_id
+    mlflow_client.log_params(fold_run_id, {
+        "train_rows": len(train_df),
+        "test_rows": len(val_df),
+        "train_start": str(train_df[TIME_COL].min()),
+        "train_end": str(train_df[TIME_COL].max()),
+        "test_start": str(val_df[TIME_COL].min()),
+        "test_end": str(val_df[TIME_COL].max()),
+        "train_stations": len(train_station_set),
+        "test_stations": len(val_station_set),
+        "unseen_test_stations": len(unseen_stations),
+    })
+    mlflow_client.log_metrics(fold_run_id, {
+        "train_rmse": train_rmse,
+        "train_mae": train_mae,
+        "train_r2": train_r2,
+        "test_rmse": test_rmse,
+        "test_mae": test_mae,
+        "test_r2": test_r2,
+    })
+    mlflow_client.set_terminated(fold_run_id, status="FINISHED")
+
+    print(
+        f"Training metrics | RMSE: {train_rmse:.3f} µg/m³ | "
+        f"MAE: {train_mae:.3f} µg/m³ | R²: {train_r2:.4f}"
+    )
+    print(
+        f"Testing metrics  | RMSE: {test_rmse:.3f} µg/m³ | "
+        f"MAE: {test_mae:.3f} µg/m³ | R²: {test_r2:.4f}"
+    )
     if unseen_stations:
         print("WARNING: stations not seen in training:", unseen_stations)
 
@@ -291,15 +378,34 @@ if not fold_metrics:
     raise RuntimeError("No folds completed. Check the dataset and split settings.")
 
 metrics_df = pd.DataFrame(fold_metrics)
+os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_METRICS)), exist_ok=True)
+os.makedirs(os.path.dirname(os.path.abspath(OUTPUT_PREDICTIONS)), exist_ok=True)
 metrics_df.to_csv(OUTPUT_METRICS, index=False)
 
 predictions_df = pd.concat(fold_predictions, ignore_index=True)
 predictions_df.to_csv(OUTPUT_PREDICTIONS, index=False)
 
+for metric_name in (
+    "train_rmse", "train_mae", "train_r2",
+    "test_rmse", "test_mae", "test_r2",
+):
+    mlflow_client.log_metric(parent_run_id, metric_name, float(metrics_df[metric_name].mean()))
+mlflow_client.log_artifact(parent_run_id, OUTPUT_METRICS, artifact_path="results")
+mlflow_client.log_artifact(parent_run_id, OUTPUT_PREDICTIONS, artifact_path="results")
+mlflow_client.set_terminated(parent_run_id, status="FINISHED")
+
 print("\nCross-validation results")
-print(metrics_df[["fold", "rmse", "mae", "unseen_validation_stations"]].to_string(index=False))
-print(f"\nMean validation RMSE: {metrics_df['rmse'].mean():.3f} µg/m³")
-print(f"Mean validation MAE:  {metrics_df['mae'].mean():.3f} µg/m³")
+metric_columns = [
+    "fold", "train_rmse", "train_mae", "train_r2",
+    "test_rmse", "test_mae", "test_r2", "unseen_validation_stations",
+]
+print(metrics_df[metric_columns].to_string(index=False))
+for split in ("train", "test"):
+    print(
+        f"\nMean {split} RMSE: {metrics_df[f'{split}_rmse'].mean():.3f} µg/m³ | "
+        f"MAE: {metrics_df[f'{split}_mae'].mean():.3f} µg/m³ | "
+        f"R²: {metrics_df[f'{split}_r2'].mean():.4f}"
+    )
 print(f"Saved fold metrics to: {OUTPUT_METRICS}")
 print(f"Saved out-of-fold predictions to: {OUTPUT_PREDICTIONS}")
 

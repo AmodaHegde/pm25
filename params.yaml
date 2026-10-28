@@ -38,8 +38,16 @@ transformer:
   mlflow:
     experiment_name: TRANSFORMER_Baseline
 pinn:
-  data:
-  model:
-  train:
-  mlflow:
+  seed: 42
+  cv:
+    n_splits: 5
+  training:
+    epochs: 3000
+    learning_rate: 0.001
+    physics_weight: 1.0
+    data_weight: 1.0
+  preprocessing: 
+    numerical_scaling: standard
+    categorical_encoding: ordinal
+
   

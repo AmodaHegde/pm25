@@ -1,42 +1,16 @@
 stages:
-  train:
-    cmd: python src/lstm/train.py
+  cross_validate:
+    cmd: python src/models/baseline_pinn.py
     deps:
-      - data/delhi_pm25_lstm_dataset.csv
-      - src/lstm/train.py
+      - data/silver/delhi_air_weather.csv
     params:
-      - data.train_split
-      - data.lookback_window
-      - data.target_column
-      - model
-      - train
-      - mlflow
+      - seed
+      - cv.n_splits
+      - training.epochs
+      - training.learning_rate
+      - training.physics_weight
+      - training.data_weight
+    metrics:
+      - results/pinn_timeseries_cv_metrics.json
     outs:
-      - models/lstm_model.pth
-      - models/scaler.pkl
-
-  validate:
-    cmd: python src/lstm/validate.py
-    deps:
-      - data/delhi_pm25_lstm_dataset.csv
-      - src/lstm/validate.py
-      - models/lstm_model.pth
-      - models/scaler.pkl
-    params:
-      - data.val_split
-      - data.lookback_window
-      - data.target_column
-      - mlflow
-
-  test:
-    cmd: python src/lstm/test.py
-    deps:
-      - data/delhi_pm25_lstm_dataset.csv
-      - src/lstm/test.py
-      - models/lstm_model.pth
-      - models/scaler.pkl
-    params:
-      - data.test_split
-      - data.lookback_window
-      - data.target_column
-      - mlflow
+      - outputs/pinn_timeseries_cv_predictions.csv

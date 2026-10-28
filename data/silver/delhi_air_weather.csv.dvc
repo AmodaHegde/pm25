@@ -1,0 +1,5 @@
+outs:
+- md5: 8da50b117e98a0269b165a19a6399473
+  size: 19420219
+  hash: md5
+  path: delhi_air_weather.csv
